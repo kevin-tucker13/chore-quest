@@ -10,7 +10,8 @@
 import { useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Star, ChevronDown, ChevronUp, Send, Trophy, Sparkles } from "lucide-react";
+import { ArrowLeft, Star, ChevronDown, ChevronUp, Send, Trophy, Sparkles, Mic, MicOff } from "lucide-react";
+import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useAppContext } from "@/contexts/AppContext";
 import { toggleTask, submitAboveBeyond, type ChildId, type ChoreCategory } from "@/lib/firebase";
 import { CelebrationOverlay, CategoryCompleteBanner } from "@/components/Celebration";
@@ -278,6 +279,21 @@ function AboveBeyondSection({ childId, theme, aboveBeyond, currentData }: AboveB
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const { isListening, isSupported, startListening, stopListening, interimTranscript } = useVoiceInput({
+    onResult: (transcript) => {
+      setText(prev => prev ? prev + " " + transcript : transcript);
+    },
+    onError: (err) => toast.error(err),
+  });
+
+  const handleMicClick = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
+
   const handleSubmit = async () => {
     if (!text.trim()) return;
     setSubmitting(true);
@@ -370,34 +386,95 @@ function AboveBeyondSection({ childId, theme, aboveBeyond, currentData }: AboveB
         ))}
 
         {/* Submit box */}
-        <div className="flex gap-2 mt-2">
-          <input
-            type="text"
-            value={text}
-            onChange={e => setText(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && handleSubmit()}
-            placeholder="What did you do? 😊"
-            className="flex-1 rounded-xl px-4 py-3 text-base font-semibold outline-none"
-            style={{
-              border: `2px solid ${theme.categoryBorder}`,
-              fontFamily: "'Nunito', sans-serif",
-              background: "white",
-            }}
-            maxLength={120}
-          />
-          <motion.button
-            onClick={handleSubmit}
-            disabled={!text.trim() || submitting}
-            className="flex items-center justify-center rounded-xl px-4 py-3 font-bold text-white"
-            style={{
-              background: text.trim() ? theme.primary : "oklch(0.80 0.01 80)",
-              border: `2px solid ${text.trim() ? theme.primaryDark : "oklch(0.75 0.01 80)"}`,
-              minWidth: "3.5rem",
-            }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <Send className="w-5 h-5" />
-          </motion.button>
+        <div className="flex flex-col gap-2 mt-2">
+          {/* Interim transcript preview */}
+          <AnimatePresence>
+            {isListening && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl"
+                style={{ background: theme.primaryLight, border: `2px dashed ${theme.primary}` }}
+              >
+                <motion.div
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{ background: theme.primary }}
+                  animate={{ scale: [1, 1.4, 1], opacity: [1, 0.5, 1] }}
+                  transition={{ duration: 0.8, repeat: Infinity }}
+                />
+                <span
+                  className="text-sm font-semibold italic"
+                  style={{ color: theme.primaryDark, fontFamily: "'Nunito', sans-serif" }}
+                >
+                  {interimTranscript || "Listening... speak now! 🎤"}
+                </span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="flex gap-2">
+            {/* Mic button */}
+            {isSupported && (
+              <motion.button
+                onClick={handleMicClick}
+                className="flex items-center justify-center rounded-xl px-4 py-3 font-bold text-white flex-shrink-0"
+                style={{
+                  background: isListening
+                    ? "oklch(0.48 0.22 25)"
+                    : theme.primary,
+                  border: `2px solid ${isListening ? "oklch(0.35 0.22 25)" : theme.primaryDark}`,
+                  minWidth: "3.5rem",
+                  boxShadow: isListening ? `0 0 0 4px ${theme.primaryLight}` : "none",
+                }}
+                animate={isListening ? { scale: [1, 1.05, 1] } : {}}
+                transition={{ duration: 0.8, repeat: isListening ? Infinity : 0 }}
+                whileTap={{ scale: 0.92 }}
+                title={isListening ? "Stop recording" : "Tap to speak"}
+              >
+                {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              </motion.button>
+            )}
+
+            <input
+              type="text"
+              value={text}
+              onChange={e => setText(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleSubmit()}
+              placeholder={isListening ? "Speaking..." : isSupported ? "Type or tap 🎤 to speak!" : "What did you do? 😊"}
+              className="flex-1 rounded-xl px-4 py-3 text-base font-semibold outline-none"
+              style={{
+                border: `2px solid ${isListening ? theme.primary : theme.categoryBorder}`,
+                fontFamily: "'Nunito', sans-serif",
+                background: "white",
+                transition: "border-color 0.2s",
+              }}
+              maxLength={120}
+              readOnly={isListening}
+            />
+            <motion.button
+              onClick={handleSubmit}
+              disabled={!text.trim() || submitting || isListening}
+              className="flex items-center justify-center rounded-xl px-4 py-3 font-bold text-white"
+              style={{
+                background: text.trim() && !isListening ? theme.primary : "oklch(0.80 0.01 80)",
+                border: `2px solid ${text.trim() && !isListening ? theme.primaryDark : "oklch(0.75 0.01 80)"}`,
+                minWidth: "3.5rem",
+              }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Send className="w-5 h-5" />
+            </motion.button>
+          </div>
+
+          {isSupported && !isListening && (
+            <p
+              className="text-xs text-center font-semibold"
+              style={{ color: theme.primary, fontFamily: "'Nunito', sans-serif", opacity: 0.7 }}
+            >
+              🎤 Tap the microphone to record your voice!
+            </p>
+          )}
         </div>
       </div>
     </div>
