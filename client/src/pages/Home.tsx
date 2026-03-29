@@ -7,8 +7,45 @@
 
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { Shield, Star, Settings } from "lucide-react";
+import { Star, Settings, Flame, TrendingUp } from "lucide-react";
+import { BarChart, Bar, ResponsiveContainer, Tooltip, Cell } from "recharts";
+import type { ChildData } from "@/lib/firebase";
 import { useAppContext } from "@/contexts/AppContext";
+
+// ─── Mini Star History Chart ──────────────────────────────────────────────────
+function StarHistoryChart({ data, color }: { data: ChildData["starHistory"]; color: string }) {
+  if (!data || data.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-12 rounded-xl" style={{ background: "oklch(0.95 0.01 80)" }}>
+        <span className="text-xs font-semibold text-gray-400" style={{ fontFamily: "'Nunito', sans-serif" }}>Complete a week to see history!</span>
+      </div>
+    );
+  }
+  // Reverse so oldest is on the left
+  const chartData = [...data].reverse().map((w, i) => ({
+    week: `W${i + 1}`,
+    stars: w.stars,
+    completed: w.completed,
+  }));
+  return (
+    <div style={{ height: 48 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={chartData} margin={{ top: 2, right: 2, left: 2, bottom: 2 }} barSize={14}>
+          <Tooltip
+            formatter={(v: number) => [`${v} ⭐`, "Stars"]}
+            contentStyle={{ fontFamily: "'Nunito', sans-serif", fontSize: 11, borderRadius: 8 }}
+            cursor={{ fill: "oklch(0.92 0.01 80)" }}
+          />
+          <Bar dataKey="stars" radius={[4, 4, 0, 0]}>
+            {chartData.map((entry, idx) => (
+              <Cell key={idx} fill={entry.completed ? color : "oklch(0.82 0.04 80)"} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
 
 const HOME_HERO = "https://d2xsxph8kpxj0f.cloudfront.net/310419663030679542/63ctKYhMVD6hQmjq4oSgF8/home-hero-NNTwsXpMHSmrLybwUxxinC.webp";
 const DEAN_HERO = "https://d2xsxph8kpxj0f.cloudfront.net/310419663030679542/63ctKYhMVD6hQmjq4oSgF8/dean-hero-ConP7q2C5kv5fVogmBHkU9.webp";
@@ -78,6 +115,12 @@ export default function Home() {
                   🏆 DONE!
                 </div>
               )}
+              {(deanData.streak || 0) > 0 && (
+                <div className="absolute top-3 left-3 flex items-center gap-1 rounded-full px-2 py-1 text-xs font-black text-white" style={{ background: "oklch(0.65 0.20 50)", fontFamily: "'Fredoka One', sans-serif" }}>
+                  <Flame className="w-3 h-3" />
+                  {deanData.streak}
+                </div>
+              )}
             </div>
             <div className="p-4">
               <div className="flex items-center justify-between mb-3">
@@ -101,6 +144,14 @@ export default function Home() {
               <p className="text-sm font-bold mt-2" style={{ color: "oklch(0.55 0.12 25)", fontFamily: "'Nunito', sans-serif" }}>
                 {deanProgress}% of quests complete!
               </p>
+              {/* Star history mini-chart */}
+              <div className="mt-3">
+                <div className="flex items-center gap-1 mb-1">
+                  <TrendingUp className="w-3 h-3" style={{ color: "oklch(0.55 0.12 25)" }} />
+                  <span className="text-xs font-bold" style={{ color: "oklch(0.55 0.12 25)", fontFamily: "'Nunito', sans-serif" }}>Weekly Stars</span>
+                </div>
+                <StarHistoryChart data={deanData.starHistory || []} color="oklch(0.48 0.22 25)" />
+              </div>
             </div>
           </motion.button>
 
@@ -123,6 +174,12 @@ export default function Home() {
               {emmaData.weekCompleted && (
                 <div className="absolute top-3 right-3 bg-yellow-400 text-yellow-900 rounded-full px-3 py-1 text-sm font-black" style={{ fontFamily: "'Fredoka One', sans-serif" }}>
                   🏆 DONE!
+                </div>
+              )}
+              {(emmaData.streak || 0) > 0 && (
+                <div className="absolute top-3 left-3 flex items-center gap-1 rounded-full px-2 py-1 text-xs font-black text-white" style={{ background: "oklch(0.65 0.20 50)", fontFamily: "'Fredoka One', sans-serif" }}>
+                  <Flame className="w-3 h-3" />
+                  {emmaData.streak}
                 </div>
               )}
             </div>
@@ -148,6 +205,14 @@ export default function Home() {
               <p className="text-sm font-bold mt-2" style={{ color: "oklch(0.52 0.14 0)", fontFamily: "'Nunito', sans-serif" }}>
                 {emmaProgress}% of quests complete!
               </p>
+              {/* Star history mini-chart */}
+              <div className="mt-3">
+                <div className="flex items-center gap-1 mb-1">
+                  <TrendingUp className="w-3 h-3" style={{ color: "oklch(0.52 0.14 0)" }} />
+                  <span className="text-xs font-bold" style={{ color: "oklch(0.52 0.14 0)", fontFamily: "'Nunito', sans-serif" }}>Weekly Stars</span>
+                </div>
+                <StarHistoryChart data={emmaData.starHistory || []} color="oklch(0.58 0.24 0)" />
+              </div>
             </div>
           </motion.button>
         </div>

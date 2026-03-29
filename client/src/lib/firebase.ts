@@ -70,6 +70,12 @@ export interface WeeklyReward {
   earned: boolean;
 }
 
+export interface WeekHistoryEntry {
+  weekStart: string;  // ISO date
+  stars: number;
+  completed: boolean;
+}
+
 export interface ChildData {
   id: ChildId;
   name: string;
@@ -79,6 +85,8 @@ export interface ChildData {
   aboveBeyond: AboveBeyondEntry[];
   weeklyReward: WeeklyReward;
   weekCompleted: boolean;
+  streak: number;           // consecutive weeks fully completed
+  starHistory: WeekHistoryEntry[]; // last 8 weeks of star totals
 }
 
 export interface AppSettings {
@@ -164,6 +172,8 @@ export function getDefaultChildData(childId: ChildId): ChildData {
       },
     ],
     aboveBeyond: [],
+    streak: 0,
+    starHistory: [],
     weeklyReward: {
       title: "Weekly Reward",
       description: childId === "dean"
@@ -428,7 +438,7 @@ export async function updateWeeklyReward(childId: ChildId, reward: WeeklyReward,
   await updateChildData(childId, { weeklyReward: reward });
 }
 
-/** Reset week (parent action) */
+/** Reset week (parent action) — archives current week to history and updates streak */
 export async function resetWeek(childId: ChildId, currentData: ChildData) {
   const today = new Date();
   const monday = new Date(today);
@@ -446,6 +456,19 @@ export async function resetWeek(childId: ChildId, currentData: ChildData) {
     })),
   }));
 
+  // Archive the week that just ended into history (keep last 8 weeks)
+  const historyEntry: WeekHistoryEntry = {
+    weekStart: currentData.weekStartDate,
+    stars: currentData.totalStars,
+    completed: currentData.weekCompleted,
+  };
+  const existingHistory = currentData.starHistory || [];
+  const newHistory = [historyEntry, ...existingHistory].slice(0, 8);
+
+  // Update streak: +1 if week was completed, reset to 0 if not
+  const prevStreak = currentData.streak || 0;
+  const newStreak = currentData.weekCompleted ? prevStreak + 1 : 0;
+
   await updateChildData(childId, {
     categories: resetCategories,
     totalStars: 0,
@@ -453,6 +476,8 @@ export async function resetWeek(childId: ChildId, currentData: ChildData) {
     weekCompleted: false,
     aboveBeyond: [],
     weeklyReward: { ...currentData.weeklyReward, earned: false },
+    streak: newStreak,
+    starHistory: newHistory,
   });
 }
 

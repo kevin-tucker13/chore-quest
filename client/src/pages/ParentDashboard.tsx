@@ -12,6 +12,7 @@
  */
 
 import { useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -801,6 +802,17 @@ export default function ParentDashboard() {
   const [authenticated, setAuthenticated] = useState(isParentAuthenticated);
   const [activeTab, setActiveTab] = useState<"dean" | "emma" | "settings">("dean");
 
+  const sendReminder = trpc.notifications.sendReminder.useMutation({
+    onSuccess: ({ sent }) => {
+      if (sent) {
+        toast.success("Reminder sent to your device! 📨");
+      } else {
+        toast.error("Could not send reminder right now.");
+      }
+    },
+    onError: () => toast.error("Failed to send reminder."),
+  });
+
   if (!authenticated) {
     return <PinEntry onSuccess={() => setAuthenticated(true)} />;
   }
@@ -838,13 +850,25 @@ export default function ParentDashboard() {
           >
             🛡️ Parent Dashboard
           </h1>
-          <button
-            onClick={() => { logoutParent(); setAuthenticated(false); }}
-            className="text-white/60 text-sm font-bold"
-            style={{ fontFamily: "'Nunito', sans-serif" }}
-          >
-            Lock 🔒
-          </button>
+          <div className="flex items-center gap-2">
+            <motion.button
+              onClick={() => sendReminder.mutate({ message: "" })}
+              disabled={sendReminder.isPending}
+              className="flex items-center gap-1 text-white/80 text-xs font-bold px-2 py-1 rounded-lg"
+              style={{ background: "oklch(0.42 0.12 50)", fontFamily: "'Nunito', sans-serif" }}
+              whileTap={{ scale: 0.95 }}
+              title="Send a reminder notification to your device"
+            >
+              {sendReminder.isPending ? "⏳" : "📨"} Remind
+            </motion.button>
+            <button
+              onClick={() => { logoutParent(); setAuthenticated(false); }}
+              className="text-white/60 text-sm font-bold"
+              style={{ fontFamily: "'Nunito', sans-serif" }}
+            >
+              Lock 🔒
+            </button>
+          </div>
         </div>
       </div>
 

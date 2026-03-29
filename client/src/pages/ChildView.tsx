@@ -8,6 +8,7 @@
  */
 
 import { useState, useCallback } from "react";
+import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Star, ChevronDown, ChevronUp, Send, Trophy, Sparkles, Mic, MicOff } from "lucide-react";
@@ -278,6 +279,7 @@ interface AboveBeyondSectionProps {
 function AboveBeyondSection({ childId, theme, aboveBeyond, currentData }: AboveBeyondSectionProps) {
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const aboveBeyondAlert = trpc.notifications.aboveBeyondAlert.useMutation();
 
   const { isListening, isSupported, startListening, stopListening, interimTranscript } = useVoiceInput({
     onResult: (transcript) => {
@@ -298,7 +300,13 @@ function AboveBeyondSection({ childId, theme, aboveBeyond, currentData }: AboveB
     if (!text.trim()) return;
     setSubmitting(true);
     try {
-      await submitAboveBeyond(childId, text.trim(), currentData);
+      const description = text.trim();
+      await submitAboveBeyond(childId, description, currentData);
+      // Notify parent via push notification
+      aboveBeyondAlert.mutate({
+        childName: childId === "dean" ? "Dean" : "Emma",
+        description,
+      });
       setText("");
       toast.success("Sent to your parent! 🌟 They'll review it soon.");
     } catch {
@@ -489,6 +497,9 @@ export default function ChildView({ childId }: Props) {
   const childData = childId === "dean" ? deanData : emmaData;
   const theme = THEMES[childId];
 
+  const weekCompleteMutation = trpc.notifications.weekComplete.useMutation();
+  const aboveBeyondAlert = trpc.notifications.aboveBeyondAlert.useMutation();
+
   const [showCelebration, setShowCelebration] = useState(false);
   const [justCompletedCategoryId, setJustCompletedCategoryId] = useState<string | null>(null);
   const [categoryBannerName, setCategoryBannerName] = useState("");
@@ -537,6 +548,11 @@ export default function ChildView({ childId }: Props) {
       // Check week completion
       if (result?.allComplete && !childData.weekCompleted) {
         setTimeout(() => setShowCelebration(true), 600);
+        // Notify parent
+        weekCompleteMutation.mutate({
+          childName: childId === "dean" ? "Dean" : "Emma",
+          totalStars: childData.totalStars,
+        });
       }
     },
     [childId, childData]
