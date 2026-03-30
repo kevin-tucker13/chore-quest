@@ -13,6 +13,7 @@
 
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { STORAGE_CODE_KEY, getFamilyCode, lockFamily } from "@/components/FamilyGate";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -683,6 +684,42 @@ function SettingsPanel() {
   const [confirmPin, setConfirmPin] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Family access code
+  const [newFamilyCode, setNewFamilyCode] = useState("");
+  const [confirmFamilyCode, setConfirmFamilyCode] = useState("");
+  const [savingCode, setSavingCode] = useState(false);
+
+  const handleSaveFamilyCode = async () => {
+    if (newFamilyCode.length < 4) {
+      toast.error("Family code must be at least 4 characters.");
+      return;
+    }
+    if (newFamilyCode !== confirmFamilyCode) {
+      toast.error("Codes don\'t match!");
+      return;
+    }
+    setSavingCode(true);
+    try {
+      // Save to localStorage on this device immediately
+      localStorage.setItem(STORAGE_CODE_KEY, newFamilyCode);
+      // Also persist to Firebase so all devices pick it up on next visit
+      await updateSettings({ familyCode: newFamilyCode });
+      setNewFamilyCode("");
+      setConfirmFamilyCode("");
+      toast.success("Family code updated! Other devices will use the new code on their next visit.");
+    } catch {
+      toast.error("Failed to save family code.");
+    } finally {
+      setSavingCode(false);
+    }
+  };
+
+  const handleLockAllDevices = () => {
+    if (!confirm("This will lock the app on THIS device immediately. All other devices will need the family code next time they visit. Continue?")) return;
+    lockFamily();
+    window.location.reload();
+  };
+
   const handleSavePin = async () => {
     if (newPin.length !== 6 || !/^\d{6}$/.test(newPin)) {
       toast.error("PIN must be exactly 6 digits.");
@@ -707,6 +744,68 @@ function SettingsPanel() {
 
   return (
     <div className="flex flex-col gap-5">
+
+      {/* ─── Family Access Code ─────────────────────────────────────────────── */}
+      <div
+        className="rounded-2xl p-4"
+        style={{ background: "white", border: "3px solid oklch(0.78 0.04 260)", boxShadow: "0 4px 0 oklch(0.65 0.04 260)" }}
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <Shield className="w-5 h-5" style={{ color: "oklch(0.35 0.04 260)" }} />
+          <h3 className="text-lg font-black" style={{ fontFamily: "'Fredoka One', sans-serif", color: "oklch(0.25 0.04 260)" }}>
+            Family Access Code
+          </h3>
+        </div>
+        <p className="text-sm text-gray-500 mb-4" style={{ fontFamily: "'Nunito', sans-serif" }}>
+          This code is required to open the app on any new device. Once entered, the device remembers it.
+          Current code: <strong style={{ letterSpacing: "0.15em" }}>{getFamilyCode()}</strong>
+        </p>
+        <div className="flex flex-col gap-2 mb-3">
+          <input
+            type="password"
+            inputMode="numeric"
+            value={newFamilyCode}
+            onChange={e => setNewFamilyCode(e.target.value.slice(0, 8))}
+            placeholder="New family code (4–8 digits)"
+            className="rounded-xl px-3 py-2 font-bold outline-none text-center text-xl tracking-widest"
+            style={{ border: "2px solid oklch(0.78 0.04 260)", fontFamily: "'Fredoka One', sans-serif", letterSpacing: "0.3em" }}
+          />
+          <input
+            type="password"
+            inputMode="numeric"
+            value={confirmFamilyCode}
+            onChange={e => setConfirmFamilyCode(e.target.value.slice(0, 8))}
+            placeholder="Confirm new code"
+            className="rounded-xl px-3 py-2 font-bold outline-none text-center text-xl tracking-widest"
+            style={{ border: "2px solid oklch(0.78 0.04 260)", fontFamily: "'Fredoka One', sans-serif", letterSpacing: "0.3em" }}
+          />
+          <motion.button
+            onClick={handleSaveFamilyCode}
+            disabled={savingCode || newFamilyCode.length < 4}
+            className="py-2 rounded-xl font-black text-white"
+            style={{
+              background: newFamilyCode.length >= 4 ? "oklch(0.35 0.04 260)" : "oklch(0.80 0.01 80)",
+              fontFamily: "'Fredoka One', sans-serif",
+            }}
+            whileTap={{ scale: 0.97 }}
+          >
+            {savingCode ? "Saving..." : "Save Family Code 🔑"}
+          </motion.button>
+        </div>
+        <motion.button
+          onClick={handleLockAllDevices}
+          className="w-full py-2 rounded-xl font-black text-white"
+          style={{ background: "oklch(0.48 0.22 25)", fontFamily: "'Fredoka One', sans-serif" }}
+          whileTap={{ scale: 0.97 }}
+        >
+          🔒 Lock This Device Now
+        </motion.button>
+        <p className="text-xs text-gray-400 mt-2" style={{ fontFamily: "'Nunito', sans-serif" }}>
+          Changing the code here only updates this device. To enforce it on all devices, each device will need to re-enter the new code on next visit.
+        </p>
+      </div>
+
+      {/* ─── Parent PIN ─────────────────────────────────────────────────────── */}
       <div
         className="rounded-2xl p-4"
         style={{ background: "white", border: "3px solid oklch(0.78 0.04 260)", boxShadow: "0 4px 0 oklch(0.65 0.04 260)" }}

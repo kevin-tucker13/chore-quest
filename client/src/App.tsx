@@ -15,6 +15,7 @@ import Home from "./pages/Home";
 import ChildView from "./pages/ChildView";
 import ParentDashboard from "./pages/ParentDashboard";
 import { AppProvider } from "./contexts/AppContext";
+import FamilyGate from "./components/FamilyGate";
 import { useEffect } from "react";
 import { initFirebase, ensureChildData, ensureSettings } from "./lib/firebase";
 
@@ -46,11 +47,13 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
-          <AppProvider>
-            <AppInit />
-            <Toaster position="top-center" richColors />
-            <Router />
-          </AppProvider>
+          <FamilyGate>
+            <AppProvider>
+              <AppInit />
+              <Toaster position="top-center" richColors />
+              <Router />
+            </AppProvider>
+          </FamilyGate>
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

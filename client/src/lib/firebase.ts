@@ -92,6 +92,7 @@ export interface ChildData {
 export interface AppSettings {
   parentPin: string;
   weekStartDay: number; // 0 = Sunday, 1 = Monday
+  familyCode?: string; // Family access code (default: 6643)
 }
 
 // ─── Initialise Firebase ──────────────────────────────────────────────────────
@@ -189,6 +190,7 @@ export function getDefaultChildData(childId: ChildId): ChildData {
 export const defaultSettings: AppSettings = {
   parentPin: "130615",
   weekStartDay: 1,
+  familyCode: "6643",
 };
 
 // ─── Local Storage Fallback (Demo / Offline Mode) ─────────────────────────────

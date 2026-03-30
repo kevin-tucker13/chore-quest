@@ -13,6 +13,7 @@ import {
   defaultSettings,
   getDefaultChildData,
 } from "@/lib/firebase";
+import { syncFamilyCodeFromSettings } from "@/components/FamilyGate";
 
 interface AppContextType {
   deanData: ChildData;
@@ -50,6 +51,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
     const unsubSettings = subscribeToSettings((s) => {
       setSettings(s);
+      // Sync the family access code from Firebase to localStorage on this device
+      syncFamilyCodeFromSettings(s.familyCode);
       checkLoaded();
     });
 

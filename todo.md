@@ -30,7 +30,12 @@
 - [x] GitHub Actions workflow for GitHub Pages deployment
 - [x] SETUP.md with Firebase, PIN change, and Heart Internet migration guide
 
-## Future Ideas
+## Future Ideas (not required — for future consideration)
 - [ ] Streak milestone rewards (e.g. badge at 4-week streak)
 - [ ] Multiple reward tiers (bronze/silver/gold)
 - [ ] Photo proof upload for completed tasks
+
+## Security
+- [x] Family access code gate — protects entire app before home screen loads
+- [x] Device memory for access code (localStorage) so it only needs entering once per device
+- [x] Change family access code from Parent Dashboard settings
