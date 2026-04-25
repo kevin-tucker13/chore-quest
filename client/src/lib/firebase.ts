@@ -26,12 +26,12 @@ import {
 // Replace these values with your own Firebase project config.
 // See README.md for instructions on creating a free Firebase project.
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "demo-api-key",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "demo.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "demo-project",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "demo.appspot.com",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "000000000000",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:000000000000:web:000000000000",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyB93FRDgE2UbmuPNAVRnHxi7BOUqOGftmE",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "chore-quest-7617f.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "chore-quest-7617f",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "chore-quest-7617f.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "132152615162",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:132152615162:web:fb30c66b93be0d954e2943",
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
