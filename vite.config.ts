@@ -163,8 +163,8 @@ export default defineConfig({
   },
   envDir: path.resolve(import.meta.dirname),
   // For GitHub Pages deployment, set base to your repo name:
-  // base: "/chore-quest/",
-  // For custom domain or Heart Internet hosting, leave base as default "/"
+  base: "/chore-quest/",
+  // For custom domain or Heart Internet hosting, comment out the line above and leave base as default "/"
   root: path.resolve(import.meta.dirname, "client"),
   publicDir: path.resolve(import.meta.dirname, "client", "public"),
   build: {
