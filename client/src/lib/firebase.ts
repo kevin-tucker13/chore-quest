@@ -3,13 +3,8 @@
  * ======================================
  * Design: Adventure Quest — ADHD-friendly chore chart for Dean & Emma
  *
- * This file initialises Firebase and exports all data access functions.
- * The app uses Firestore for real-time sync between parent and child devices.
- *
- * MIGRATION NOTE (Heart Internet):
- * If you need to migrate to Heart Internet hosting, replace this file with
- * a PHP/MySQL REST API client. The function signatures remain the same —
- * only the implementation changes. See MIGRATION.md for full instructions.
+ * Data model v2: supports daily/weekly task types, recurring tasks,
+ * completion timestamps, and bulk clear.
  */
 
 import { initializeApp } from "firebase/app";
@@ -23,8 +18,6 @@ import {
 } from "firebase/firestore";
 
 // ─── Firebase Config ──────────────────────────────────────────────────────────
-// Replace these values with your own Firebase project config.
-// See README.md for instructions on creating a free Firebase project.
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyB93FRDgE2UbmuPNAVRnHxi7BOUqOGftmE",
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "chore-quest-7617f.firebaseapp.com",
@@ -37,12 +30,16 @@ const firebaseConfig = {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type ChildId = "dean" | "emma";
+export type TaskFrequency = "daily" | "weekly";
 
 export interface ChoreTask {
   id: string;
   title: string;
   completed: boolean;
   completedAt?: string | null;
+  frequency: TaskFrequency;   // "daily" resets every day, "weekly" resets every week
+  recurring: boolean;         // if true, task reappears automatically after reset
+  lastResetDate?: string | null; // ISO date — tracks when this daily task was last reset
 }
 
 export interface ChoreCategory {
@@ -51,6 +48,7 @@ export interface ChoreCategory {
   emoji: string;
   tasks: ChoreTask[];
   order: number;
+  frequency: TaskFrequency;   // category-level frequency (all tasks inherit this)
 }
 
 export interface AboveBeyondEntry {
@@ -71,7 +69,7 @@ export interface WeeklyReward {
 }
 
 export interface WeekHistoryEntry {
-  weekStart: string;  // ISO date
+  weekStart: string;
   stars: number;
   completed: boolean;
 }
@@ -80,19 +78,20 @@ export interface ChildData {
   id: ChildId;
   name: string;
   totalStars: number;
-  weekStartDate: string; // ISO date string
+  weekStartDate: string;
+  lastDailyResetDate: string; // ISO date — tracks when daily tasks were last reset
   categories: ChoreCategory[];
   aboveBeyond: AboveBeyondEntry[];
   weeklyReward: WeeklyReward;
   weekCompleted: boolean;
-  streak: number;           // consecutive weeks fully completed
-  starHistory: WeekHistoryEntry[]; // last 8 weeks of star totals
+  streak: number;
+  starHistory: WeekHistoryEntry[];
 }
 
 export interface AppSettings {
   parentPin: string;
-  weekStartDay: number; // 0 = Sunday, 1 = Monday
-  familyCode?: string; // Family access code (default: 6643)
+  weekStartDay: number;
+  familyCode?: string;
 }
 
 // ─── Initialise Firebase ──────────────────────────────────────────────────────
@@ -118,34 +117,57 @@ export function getIsDemo() {
   return isDemo;
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+export function todayISO(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+/** Format an ISO timestamp to a friendly time string e.g. "7:43am" */
+export function formatCompletedAt(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit", hour12: true });
+}
+
+/** Format an ISO timestamp to date + time e.g. "Mon 21 Apr at 7:43am" */
+export function formatCompletedAtFull(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })
+    + " at " + d.toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit", hour12: true });
+}
+
 // ─── Default Data ─────────────────────────────────────────────────────────────
 
 export function getDefaultChildData(childId: ChildId): ChildData {
   const name = childId === "dean" ? "Dean" : "Emma";
   const today = new Date();
-  // Get Monday of current week
   const monday = new Date(today);
   const day = monday.getDay();
   const diff = monday.getDate() - day + (day === 0 ? -6 : 1);
   monday.setDate(diff);
   const weekStart = monday.toISOString().split("T")[0];
+  const todayStr = todayISO();
 
   return {
     id: childId,
     name,
     totalStars: 0,
     weekStartDate: weekStart,
+    lastDailyResetDate: todayStr,
     categories: [
       {
         id: "morning",
         title: "Morning Routine",
         emoji: "🌅",
         order: 0,
+        frequency: "daily",
         tasks: [
-          { id: "m1", title: "Get dressed", completed: false, completedAt: null },
-          { id: "m2", title: "Brush teeth", completed: false, completedAt: null },
-          { id: "m3", title: "Eat breakfast", completed: false, completedAt: null },
-          { id: "m4", title: "Wash face", completed: false, completedAt: null },
+          { id: "m1", title: "Get dressed", completed: false, completedAt: null, frequency: "daily", recurring: true },
+          { id: "m2", title: "Brush teeth", completed: false, completedAt: null, frequency: "daily", recurring: true },
+          { id: "m3", title: "Eat breakfast", completed: false, completedAt: null, frequency: "daily", recurring: true },
+          { id: "m4", title: "Wash face", completed: false, completedAt: null, frequency: "daily", recurring: true },
         ],
       },
       {
@@ -153,11 +175,12 @@ export function getDefaultChildData(childId: ChildId): ChildData {
         title: "Tidy Bedroom",
         emoji: "🛏️",
         order: 1,
+        frequency: "weekly",
         tasks: [
-          { id: "b1", title: "Make the bed", completed: false, completedAt: null },
-          { id: "b2", title: "Put clothes away", completed: false, completedAt: null },
-          { id: "b3", title: "Tidy toys off the floor", completed: false, completedAt: null },
-          { id: "b4", title: "Put dirty clothes in the basket", completed: false, completedAt: null },
+          { id: "b1", title: "Make the bed", completed: false, completedAt: null, frequency: "weekly", recurring: true },
+          { id: "b2", title: "Put clothes away", completed: false, completedAt: null, frequency: "weekly", recurring: true },
+          { id: "b3", title: "Tidy toys off the floor", completed: false, completedAt: null, frequency: "weekly", recurring: true },
+          { id: "b4", title: "Put dirty clothes in the basket", completed: false, completedAt: null, frequency: "weekly", recurring: true },
         ],
       },
       {
@@ -165,10 +188,10 @@ export function getDefaultChildData(childId: ChildId): ChildData {
         title: "Helping Out",
         emoji: "🤝",
         order: 2,
+        frequency: "weekly",
         tasks: [
-          { id: "h1", title: "Set the table for dinner", completed: false, completedAt: null },
-          { id: "h2", title: "Help clear the table", completed: false, completedAt: null },
-          { id: "h3", title: "Feed the pet (if applicable)", completed: false, completedAt: null },
+          { id: "h1", title: "Set the table for dinner", completed: false, completedAt: null, frequency: "weekly", recurring: true },
+          { id: "h2", title: "Help clear the table", completed: false, completedAt: null, frequency: "weekly", recurring: true },
         ],
       },
     ],
@@ -177,9 +200,7 @@ export function getDefaultChildData(childId: ChildId): ChildData {
     starHistory: [],
     weeklyReward: {
       title: "Weekly Reward",
-      description: childId === "dean"
-        ? "Extra tablet time on Friday + £1 pocket money"
-        : "Extra tablet time on Friday + £1 pocket money",
+      description: "Extra tablet time on Friday + £1 pocket money",
       starsRequired: 20,
       earned: false,
     },
@@ -214,6 +235,59 @@ function lsSet(key: string, value: unknown) {
   }
 }
 
+// ─── Daily Reset Logic ────────────────────────────────────────────────────────
+
+/**
+ * Check if daily tasks need resetting (new day since last reset).
+ * Returns updated ChildData if a reset was needed, or null if no change.
+ */
+export function applyDailyResetIfNeeded(data: ChildData): ChildData | null {
+  const today = todayISO();
+  if (data.lastDailyResetDate === today) return null; // already reset today
+
+  // Reset only daily tasks (recurring ones reset to incomplete, non-recurring stay as-is)
+  const updatedCategories = data.categories.map((cat) => {
+    if (cat.frequency !== "daily") return cat;
+    return {
+      ...cat,
+      tasks: cat.tasks.map((task) => {
+        if (!task.recurring) return task;
+        return { ...task, completed: false, completedAt: null };
+      }),
+    };
+  });
+
+  return {
+    ...data,
+    categories: updatedCategories,
+    lastDailyResetDate: today,
+    // Recalculate weekCompleted — only weekly tasks count toward weekly completion
+    weekCompleted: checkWeeklyComplete(updatedCategories),
+  };
+}
+
+/** Check if all weekly tasks are complete */
+function checkWeeklyComplete(categories: ChoreCategory[]): boolean {
+  const weeklyTasks = categories
+    .filter((c) => c.frequency === "weekly")
+    .flatMap((c) => c.tasks);
+  if (weeklyTasks.length === 0) return false;
+  return weeklyTasks.every((t) => t.completed);
+}
+
+/** Count stars: daily tasks = 1 star each, weekly tasks = 2 stars each */
+export function calculateStars(categories: ChoreCategory[]): number {
+  let stars = 0;
+  for (const cat of categories) {
+    for (const task of cat.tasks) {
+      if (task.completed) {
+        stars += cat.frequency === "weekly" ? 2 : 1;
+      }
+    }
+  }
+  return stars;
+}
+
 // ─── Data Access Functions ────────────────────────────────────────────────────
 
 /** Subscribe to a child's data in real-time */
@@ -222,10 +296,8 @@ export function subscribeToChild(
   callback: (data: ChildData) => void
 ): () => void {
   if (isDemo || !db) {
-    // Use localStorage in demo mode
     const data = lsGet<ChildData>(`child_${childId}`, getDefaultChildData(childId));
     callback(data);
-    // Poll localStorage for changes (for demo multi-tab support)
     const interval = setInterval(() => {
       const updated = lsGet<ChildData>(`child_${childId}`, getDefaultChildData(childId));
       callback(updated);
@@ -304,25 +376,26 @@ export async function toggleTask(
     };
   });
 
-  // Calculate new star total
-  const totalTasks = updatedCategories.flatMap((c) => c.tasks).length;
-  const completedTasks = updatedCategories.flatMap((c) => c.tasks).filter((t) => t.completed).length;
-  const starsPerTask = 1;
-  const totalStars = completedTasks * starsPerTask;
-
-  const allComplete = completedTasks === totalTasks;
+  const totalStars = calculateStars(updatedCategories);
+  const allWeeklyComplete = checkWeeklyComplete(updatedCategories);
 
   await updateChildData(childId, {
     categories: updatedCategories,
     totalStars,
-    weekCompleted: allComplete,
+    weekCompleted: allWeeklyComplete,
   });
 
-  return { totalStars, allComplete, completedTasks, totalTasks };
+  const allTasks = updatedCategories.flatMap((c) => c.tasks);
+  const completedTasks = allTasks.filter((t) => t.completed).length;
+  return { totalStars, allComplete: allWeeklyComplete, completedTasks, totalTasks: allTasks.length };
 }
 
 /** Add a new category */
-export async function addCategory(childId: ChildId, category: Omit<ChoreCategory, "id">, currentData: ChildData) {
+export async function addCategory(
+  childId: ChildId,
+  category: Omit<ChoreCategory, "id">,
+  currentData: ChildData
+) {
   const id = `cat_${Date.now()}`;
   const newCategory: ChoreCategory = { ...category, id };
   await updateChildData(childId, {
@@ -332,7 +405,12 @@ export async function addCategory(childId: ChildId, category: Omit<ChoreCategory
 }
 
 /** Update a category */
-export async function updateCategory(childId: ChildId, categoryId: string, updates: Partial<ChoreCategory>, currentData: ChildData) {
+export async function updateCategory(
+  childId: ChildId,
+  categoryId: string,
+  updates: Partial<ChoreCategory>,
+  currentData: ChildData
+) {
   const updatedCategories = currentData.categories.map((cat) =>
     cat.id === categoryId ? { ...cat, ...updates } : cat
   );
@@ -340,28 +418,47 @@ export async function updateCategory(childId: ChildId, categoryId: string, updat
 }
 
 /** Delete a category */
-export async function deleteCategory(childId: ChildId, categoryId: string, currentData: ChildData) {
+export async function deleteCategory(
+  childId: ChildId,
+  categoryId: string,
+  currentData: ChildData
+) {
   const updatedCategories = currentData.categories.filter((cat) => cat.id !== categoryId);
   await updateChildData(childId, { categories: updatedCategories });
 }
 
 /** Add a task to a category */
-export async function addTask(childId: ChildId, categoryId: string, taskTitle: string, currentData: ChildData) {
+export async function addTask(
+  childId: ChildId,
+  categoryId: string,
+  taskTitle: string,
+  frequency: TaskFrequency,
+  recurring: boolean,
+  currentData: ChildData
+) {
+  const cat = currentData.categories.find((c) => c.id === categoryId);
   const newTask: ChoreTask = {
     id: `task_${Date.now()}`,
     title: taskTitle,
     completed: false,
     completedAt: null,
+    frequency: frequency || cat?.frequency || "daily",
+    recurring,
   };
-  const updatedCategories = currentData.categories.map((cat) => {
-    if (cat.id !== categoryId) return cat;
-    return { ...cat, tasks: [...cat.tasks, newTask] };
+  const updatedCategories = currentData.categories.map((c) => {
+    if (c.id !== categoryId) return c;
+    return { ...c, tasks: [...c.tasks, newTask] };
   });
   await updateChildData(childId, { categories: updatedCategories });
 }
 
 /** Delete a task */
-export async function deleteTask(childId: ChildId, categoryId: string, taskId: string, currentData: ChildData) {
+export async function deleteTask(
+  childId: ChildId,
+  categoryId: string,
+  taskId: string,
+  currentData: ChildData
+) {
   const updatedCategories = currentData.categories.map((cat) => {
     if (cat.id !== categoryId) return cat;
     return { ...cat, tasks: cat.tasks.filter((t) => t.id !== taskId) };
@@ -369,8 +466,46 @@ export async function deleteTask(childId: ChildId, categoryId: string, taskId: s
   await updateChildData(childId, { categories: updatedCategories });
 }
 
+/** Bulk clear — reset ALL tasks to incomplete for a child */
+export async function clearAllTasks(childId: ChildId, currentData: ChildData) {
+  const clearedCategories = currentData.categories.map((cat) => ({
+    ...cat,
+    tasks: cat.tasks.map((task) => ({
+      ...task,
+      completed: false,
+      completedAt: null,
+    })),
+  }));
+  await updateChildData(childId, {
+    categories: clearedCategories,
+    totalStars: 0,
+    weekCompleted: false,
+  });
+}
+
+/** Clear only daily tasks */
+export async function clearDailyTasks(childId: ChildId, currentData: ChildData) {
+  const updatedCategories = currentData.categories.map((cat) => {
+    if (cat.frequency !== "daily") return cat;
+    return {
+      ...cat,
+      tasks: cat.tasks.map((task) => ({ ...task, completed: false, completedAt: null })),
+    };
+  });
+  const totalStars = calculateStars(updatedCategories);
+  await updateChildData(childId, {
+    categories: updatedCategories,
+    totalStars,
+    lastDailyResetDate: todayISO(),
+  });
+}
+
 /** Submit an above & beyond entry (from child) */
-export async function submitAboveBeyond(childId: ChildId, description: string, currentData: ChildData) {
+export async function submitAboveBeyond(
+  childId: ChildId,
+  description: string,
+  currentData: ChildData
+) {
   const entry: AboveBeyondEntry = {
     id: `ab_${Date.now()}`,
     description,
@@ -393,17 +528,11 @@ export async function awardAboveBeyond(
 ) {
   const updatedAB = currentData.aboveBeyond.map((entry) => {
     if (entry.id !== entryId) return entry;
-    return {
-      ...entry,
-      approved: true,
-      starsAwarded: stars,
-      approvedAt: new Date().toISOString(),
-    };
+    return { ...entry, approved: true, starsAwarded: stars, approvedAt: new Date().toISOString() };
   });
-  const bonusStars = stars;
   await updateChildData(childId, {
     aboveBeyond: updatedAB,
-    totalStars: currentData.totalStars + bonusStars,
+    totalStars: currentData.totalStars + stars,
   });
 }
 
@@ -430,17 +559,25 @@ export async function addParentAboveBeyond(
 }
 
 /** Reject an above & beyond entry */
-export async function rejectAboveBeyond(childId: ChildId, entryId: string, currentData: ChildData) {
+export async function rejectAboveBeyond(
+  childId: ChildId,
+  entryId: string,
+  currentData: ChildData
+) {
   const updatedAB = currentData.aboveBeyond.filter((e) => e.id !== entryId);
   await updateChildData(childId, { aboveBeyond: updatedAB });
 }
 
 /** Update weekly reward */
-export async function updateWeeklyReward(childId: ChildId, reward: WeeklyReward, currentData: ChildData) {
+export async function updateWeeklyReward(
+  childId: ChildId,
+  reward: WeeklyReward,
+  _currentData: ChildData
+) {
   await updateChildData(childId, { weeklyReward: reward });
 }
 
-/** Reset week (parent action) — archives current week to history and updates streak */
+/** Reset week — archives current week to history, resets all tasks, updates streak */
 export async function resetWeek(childId: ChildId, currentData: ChildData) {
   const today = new Date();
   const monday = new Date(today);
@@ -448,17 +585,17 @@ export async function resetWeek(childId: ChildId, currentData: ChildData) {
   const diff = monday.getDate() - day + (day === 0 ? -6 : 1);
   monday.setDate(diff);
   const weekStart = monday.toISOString().split("T")[0];
+  const todayStr = todayISO();
 
+  // Reset all tasks (recurring ones reset, non-recurring stay)
   const resetCategories = currentData.categories.map((cat) => ({
     ...cat,
-    tasks: cat.tasks.map((task) => ({
-      ...task,
-      completed: false,
-      completedAt: null,
-    })),
+    tasks: cat.tasks.map((task) => {
+      if (!task.recurring) return task;
+      return { ...task, completed: false, completedAt: null };
+    }),
   }));
 
-  // Archive the week that just ended into history (keep last 8 weeks)
   const historyEntry: WeekHistoryEntry = {
     weekStart: currentData.weekStartDate,
     stars: currentData.totalStars,
@@ -467,7 +604,6 @@ export async function resetWeek(childId: ChildId, currentData: ChildData) {
   const existingHistory = currentData.starHistory || [];
   const newHistory = [historyEntry, ...existingHistory].slice(0, 8);
 
-  // Update streak: +1 if week was completed, reset to 0 if not
   const prevStreak = currentData.streak || 0;
   const newStreak = currentData.weekCompleted ? prevStreak + 1 : 0;
 
@@ -475,6 +611,7 @@ export async function resetWeek(childId: ChildId, currentData: ChildData) {
     categories: resetCategories,
     totalStars: 0,
     weekStartDate: weekStart,
+    lastDailyResetDate: todayStr,
     weekCompleted: false,
     aboveBeyond: [],
     weeklyReward: { ...currentData.weeklyReward, earned: false },

@@ -24,10 +24,11 @@ import { useAppContext } from "@/contexts/AppContext";
 import {
   addCategory, updateCategory, deleteCategory,
   addTask, deleteTask,
+  clearAllTasks,
   updateWeeklyReward, resetWeek,
   awardAboveBeyond, rejectAboveBeyond, addParentAboveBeyond,
-  updateSettings,
-  type ChildId, type ChoreCategory
+  updateSettings, formatCompletedAtFull,
+  type ChildId, type ChoreCategory, type TaskFrequency
 } from "@/lib/firebase";
 import { toast } from "sonner";
 
@@ -165,11 +166,14 @@ function ChildPanel({ childId }: ChildPanelProps) {
   const [expandedCat, setExpandedCat] = useState<string | null>(null);
   const [newCatTitle, setNewCatTitle] = useState("");
   const [newCatEmoji, setNewCatEmoji] = useState("📋");
+  const [newCatFrequency, setNewCatFrequency] = useState<TaskFrequency>("daily");
   const [addingCat, setAddingCat] = useState(false);
   const [newTaskInputs, setNewTaskInputs] = useState<Record<string, string>>({});
+  const [newTaskRecurring, setNewTaskRecurring] = useState<Record<string, boolean>>({});
   const [editingCat, setEditingCat] = useState<string | null>(null);
   const [editCatTitle, setEditCatTitle] = useState("");
   const [editCatEmoji, setEditCatEmoji] = useState("");
+  const [clearing, setClearing] = useState(false);
   const [rewardTitle, setRewardTitle] = useState(childData.weeklyReward.title);
   const [rewardDesc, setRewardDesc] = useState(childData.weeklyReward.description);
   const [rewardStars, setRewardStars] = useState(String(childData.weeklyReward.starsRequired));
@@ -187,13 +191,28 @@ function ChildPanel({ childId }: ChildPanelProps) {
         emoji: newCatEmoji,
         tasks: [],
         order: childData.categories.length,
+        frequency: newCatFrequency,
       }, childData);
       setNewCatTitle("");
       setNewCatEmoji("📋");
+      setNewCatFrequency("daily");
       setAddingCat(false);
       toast.success("Category added!");
     } catch {
       toast.error("Failed to add category.");
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!confirm(`Clear ALL of ${childData.name}'s tasks? This resets all progress but keeps the star total.`)) return;
+    setClearing(true);
+    try {
+      await clearAllTasks(childId, childData);
+      toast.success(`All tasks cleared for ${childData.name}!`);
+    } catch {
+      toast.error("Failed to clear tasks.");
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -212,8 +231,11 @@ function ChildPanel({ childId }: ChildPanelProps) {
   const handleAddTask = async (catId: string) => {
     const title = newTaskInputs[catId]?.trim();
     if (!title) return;
-    await addTask(childId, catId, title, childData);
+    const cat = childData.categories.find(c => c.id === catId);
+    const recurring = newTaskRecurring[catId] !== false; // default true
+    await addTask(childId, catId, title, cat?.frequency || "daily", recurring, childData);
     setNewTaskInputs(prev => ({ ...prev, [catId]: "" }));
+    setNewTaskRecurring(prev => ({ ...prev, [catId]: true }));
     toast.success("Task added!");
   };
 
@@ -305,6 +327,17 @@ function ChildPanel({ childId }: ChildPanelProps) {
             {childData.weekCompleted ? "✅ Done!" : "🔄 In Progress"}
           </p>
         </div>
+        <motion.button
+          onClick={handleClearAll}
+          disabled={clearing}
+          className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl text-white text-xs font-black"
+          style={{ background: "oklch(0.48 0.22 25)", fontFamily: "'Fredoka One', sans-serif" }}
+          whileTap={{ scale: 0.95 }}
+          title="Clear all tasks instantly"
+        >
+          <Trash2 className="w-4 h-4" />
+          Clear All
+        </motion.button>
       </div>
 
       {/* ─── Above & Beyond Pending Approvals ──────────────────────────────── */}
@@ -429,30 +462,53 @@ function ChildPanel({ childId }: ChildPanelProps) {
               exit={{ height: 0, opacity: 0 }}
               className="overflow-hidden mb-4"
             >
-              <div className="flex gap-2 p-3 rounded-xl" style={{ background: theme.light, border: `2px solid ${theme.border}` }}>
-                <input
-                  type="text"
-                  value={newCatEmoji}
-                  onChange={e => setNewCatEmoji(e.target.value)}
-                  className="w-12 text-center rounded-lg px-1 py-2 text-xl outline-none"
-                  style={{ border: `2px solid ${theme.border}` }}
-                  maxLength={2}
-                />
-                <input
-                  type="text"
-                  value={newCatTitle}
-                  onChange={e => setNewCatTitle(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && handleAddCategory()}
-                  placeholder="Category name..."
-                  className="flex-1 rounded-xl px-3 py-2 font-semibold outline-none"
-                  style={{ border: `2px solid ${theme.border}`, fontFamily: "'Nunito', sans-serif" }}
-                />
-                <button onClick={handleAddCategory} className="p-2 rounded-xl text-white" style={{ background: theme.primary }}>
-                  <Check className="w-5 h-5" />
-                </button>
-                <button onClick={() => setAddingCat(false)} className="p-2 rounded-xl" style={{ background: "oklch(0.92 0.01 80)" }}>
-                  <X className="w-5 h-5 text-gray-500" />
-                </button>
+              <div className="flex flex-col gap-2 p-3 rounded-xl" style={{ background: theme.light, border: `2px solid ${theme.border}` }}>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newCatEmoji}
+                    onChange={e => setNewCatEmoji(e.target.value)}
+                    className="w-12 text-center rounded-lg px-1 py-2 text-xl outline-none"
+                    style={{ border: `2px solid ${theme.border}` }}
+                    maxLength={2}
+                  />
+                  <input
+                    type="text"
+                    value={newCatTitle}
+                    onChange={e => setNewCatTitle(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && handleAddCategory()}
+                    placeholder="Category name..."
+                    className="flex-1 rounded-xl px-3 py-2 font-semibold outline-none"
+                    style={{ border: `2px solid ${theme.border}`, fontFamily: "'Nunito', sans-serif" }}
+                  />
+                  <button onClick={handleAddCategory} className="p-2 rounded-xl text-white" style={{ background: theme.primary }}>
+                    <Check className="w-5 h-5" />
+                  </button>
+                  <button onClick={() => setAddingCat(false)} className="p-2 rounded-xl" style={{ background: "oklch(0.92 0.01 80)" }}>
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-gray-500" style={{ fontFamily: "'Nunito', sans-serif" }}>Type:</span>
+                  {(["daily", "weekly"] as TaskFrequency[]).map(f => (
+                    <button
+                      key={f}
+                      onClick={() => setNewCatFrequency(f)}
+                      className="px-3 py-1 rounded-lg text-xs font-black"
+                      style={{
+                        background: newCatFrequency === f ? theme.primary : "white",
+                        color: newCatFrequency === f ? "white" : theme.primary,
+                        border: `2px solid ${theme.border}`,
+                        fontFamily: "'Fredoka One', sans-serif",
+                      }}
+                    >
+                      {f === "daily" ? "⚡ Daily" : "🏆 Weekly"}
+                    </button>
+                  ))}
+                  <span className="text-xs text-gray-400" style={{ fontFamily: "'Nunito', sans-serif" }}>
+                    {newCatFrequency === "daily" ? "Resets every morning" : "Resets each week"}
+                  </span>
+                </div>
               </div>
             </motion.div>
           )}
@@ -501,6 +557,16 @@ function ChildPanel({ childId }: ChildPanelProps) {
                     <span className="flex-1 font-black" style={{ fontFamily: "'Fredoka One', sans-serif", color: theme.primaryDark }}>
                       {cat.title}
                     </span>
+                    <span
+                      className="text-xs font-black px-2 py-0.5 rounded-full"
+                      style={{
+                        background: cat.frequency === "daily" ? "oklch(0.92 0.08 220)" : "oklch(0.92 0.08 85)",
+                        color: cat.frequency === "daily" ? "oklch(0.35 0.12 220)" : "oklch(0.40 0.12 75)",
+                        fontFamily: "'Fredoka One', sans-serif",
+                      }}
+                    >
+                      {cat.frequency === "daily" ? "⚡ Daily" : "🏆 Weekly"}
+                    </span>
                     <span className="text-sm font-bold text-gray-400" style={{ fontFamily: "'Nunito', sans-serif" }}>
                       {cat.tasks.length} tasks
                     </span>
@@ -546,37 +612,58 @@ function ChildPanel({ childId }: ChildPanelProps) {
                   >
                     <div className="p-3 flex flex-col gap-2 bg-white">
                       {cat.tasks.map(task => (
-                        <div key={task.id} className="flex items-center gap-2 p-2 rounded-lg" style={{ background: "oklch(0.97 0.005 80)" }}>
-                          <span className="flex-1 text-sm font-semibold text-gray-700" style={{ fontFamily: "'Nunito', sans-serif" }}>
-                            {task.completed ? "✅ " : "⬜ "}{task.title}
-                          </span>
-                          <button
-                            onClick={() => handleDeleteTask(cat.id, task.id)}
-                            className="p-1 rounded-lg"
-                            style={{ background: "oklch(0.95 0.04 25)" }}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" style={{ color: "oklch(0.48 0.22 25)" }} />
-                          </button>
+                        <div key={task.id} className="flex flex-col gap-0.5 p-2 rounded-lg" style={{ background: "oklch(0.97 0.005 80)" }}>
+                          <div className="flex items-center gap-2">
+                            <span className="flex-1 text-sm font-semibold text-gray-700" style={{ fontFamily: "'Nunito', sans-serif" }}>
+                              {task.completed ? "✅ " : "⬜ "}{task.title}
+                              {task.recurring && (
+                                <span className="ml-1 text-xs text-gray-400" title="Recurring task">🔄</span>
+                              )}
+                            </span>
+                            <button
+                              onClick={() => handleDeleteTask(cat.id, task.id)}
+                              className="p-1 rounded-lg"
+                              style={{ background: "oklch(0.95 0.04 25)" }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" style={{ color: "oklch(0.48 0.22 25)" }} />
+                            </button>
+                          </div>
+                          {task.completed && task.completedAt && (
+                            <span className="text-xs text-gray-400 pl-1" style={{ fontFamily: "'Nunito', sans-serif" }}>
+                              ⏰ Completed {formatCompletedAtFull(task.completedAt)}
+                            </span>
+                          )}
                         </div>
                       ))}
                       {/* Add task */}
-                      <div className="flex gap-2 mt-1">
-                        <input
-                          type="text"
-                          value={newTaskInputs[cat.id] || ""}
-                          onChange={e => setNewTaskInputs(prev => ({ ...prev, [cat.id]: e.target.value }))}
-                          onKeyDown={e => e.key === "Enter" && handleAddTask(cat.id)}
-                          placeholder="Add a task..."
-                          className="flex-1 rounded-lg px-3 py-2 text-sm font-semibold outline-none"
-                          style={{ border: `2px solid ${theme.border}`, fontFamily: "'Nunito', sans-serif" }}
-                        />
-                        <button
-                          onClick={() => handleAddTask(cat.id)}
-                          className="p-2 rounded-lg text-white"
-                          style={{ background: theme.primary }}
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
+                      <div className="flex flex-col gap-1 mt-1">
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={newTaskInputs[cat.id] || ""}
+                            onChange={e => setNewTaskInputs(prev => ({ ...prev, [cat.id]: e.target.value }))}
+                            onKeyDown={e => e.key === "Enter" && handleAddTask(cat.id)}
+                            placeholder="Add a task..."
+                            className="flex-1 rounded-lg px-3 py-2 text-sm font-semibold outline-none"
+                            style={{ border: `2px solid ${theme.border}`, fontFamily: "'Nunito', sans-serif" }}
+                          />
+                          <button
+                            onClick={() => handleAddTask(cat.id)}
+                            className="p-2 rounded-lg text-white"
+                            style={{ background: theme.primary }}
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <label className="flex items-center gap-2 text-xs font-semibold text-gray-500 pl-1 cursor-pointer" style={{ fontFamily: "'Nunito', sans-serif" }}>
+                          <input
+                            type="checkbox"
+                            checked={newTaskRecurring[cat.id] !== false}
+                            onChange={e => setNewTaskRecurring(prev => ({ ...prev, [cat.id]: e.target.checked }))}
+                            className="rounded"
+                          />
+                          🔄 Recurring (auto-reappears after reset)
+                        </label>
                       </div>
                     </div>
                   </motion.div>

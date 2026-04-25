@@ -7,6 +7,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import {
   subscribeToChild,
   subscribeToSettings,
+  applyDailyResetIfNeeded,
+  updateChildData,
   type ChildData,
   type AppSettings,
   type ChildId,
@@ -42,11 +44,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
 
     const unsubDean = subscribeToChild("dean", (data) => {
-      setDeanData(data);
+      // Apply daily reset if a new day has started since last reset
+      const resetData = applyDailyResetIfNeeded(data);
+      if (resetData) {
+        // Save the reset back to Firebase/localStorage, then use reset data
+        updateChildData("dean", resetData);
+        setDeanData(resetData);
+      } else {
+        setDeanData(data);
+      }
       checkLoaded();
     });
     const unsubEmma = subscribeToChild("emma", (data) => {
-      setEmmaData(data);
+      const resetData = applyDailyResetIfNeeded(data);
+      if (resetData) {
+        updateChildData("emma", resetData);
+        setEmmaData(resetData);
+      } else {
+        setEmmaData(data);
+      }
       checkLoaded();
     });
     const unsubSettings = subscribeToSettings((s) => {

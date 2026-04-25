@@ -14,7 +14,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Star, ChevronDown, ChevronUp, Send, Trophy, Sparkles, Mic, MicOff } from "lucide-react";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useAppContext } from "@/contexts/AppContext";
-import { toggleTask, submitAboveBeyond, type ChildId, type ChoreCategory } from "@/lib/firebase";
+import { toggleTask, submitAboveBeyond, applyDailyResetIfNeeded, type ChildId, type ChoreCategory } from "@/lib/firebase";
 import { CelebrationOverlay, CategoryCompleteBanner } from "@/components/Celebration";
 import { toast } from "sonner";
 
@@ -520,6 +520,21 @@ export default function ChildView({ childId }: Props) {
   const totalTasks = allTasks.length;
   const overallProgress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
+  // Split categories into daily and weekly boards
+  const dailyCategories = childData.categories
+    .filter(c => (c.frequency || "daily") === "daily")
+    .sort((a, b) => a.order - b.order);
+  const weeklyCategories = childData.categories
+    .filter(c => c.frequency === "weekly")
+    .sort((a, b) => a.order - b.order);
+
+  const dailyTasks = dailyCategories.flatMap(c => c.tasks);
+  const weeklyTasks = weeklyCategories.flatMap(c => c.tasks);
+  const dailyDone = dailyTasks.filter(t => t.completed).length;
+  const weeklyDone = weeklyTasks.filter(t => t.completed).length;
+  const dailyAllComplete = dailyTasks.length > 0 && dailyDone === dailyTasks.length;
+  const weeklyAllComplete = weeklyTasks.length > 0 && weeklyDone === weeklyTasks.length;
+
   const starsRequired = childData.weeklyReward.starsRequired;
   const starsProgress = Math.min((childData.totalStars / starsRequired) * 100, 100);
 
@@ -694,20 +709,66 @@ export default function ChildView({ childId }: Props) {
         </div>
       </div>
 
-      {/* ─── Category List ────────────────────────────────────────────────── */}
+      {/* ─── Quest Boards ─────────────────────────────────────────────────── */}
       <div className="container py-4 flex flex-col gap-4">
-        {childData.categories
-          .slice()
-          .sort((a, b) => a.order - b.order)
-          .map(category => (
-            <CategorySection
-              key={category.id}
-              category={category}
-              theme={theme}
-              onToggleTask={handleToggleTask}
-              justCompletedCategoryId={justCompletedCategoryId}
-            />
-          ))}
+
+        {/* ⚡ Daily Quests */}
+        {dailyCategories.length > 0 && (
+          <>
+            <div className="flex items-center gap-3">
+              <div
+                className="flex items-center gap-2 px-4 py-2 rounded-2xl font-black text-white"
+                style={{ background: "oklch(0.45 0.18 220)", fontFamily: "'Fredoka One', sans-serif", fontSize: "1.1rem", boxShadow: "0 3px 0 oklch(0.32 0.18 220)" }}
+              >
+                ⚡ Today's Quests
+              </div>
+              <span className="text-sm font-bold text-gray-400" style={{ fontFamily: "'Nunito', sans-serif" }}>
+                {dailyDone}/{dailyTasks.length}
+              </span>
+              {dailyAllComplete && (
+                <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-xl">✅</motion.span>
+              )}
+            </div>
+            {dailyCategories.map(category => (
+              <CategorySection
+                key={category.id}
+                category={category}
+                theme={theme}
+                onToggleTask={handleToggleTask}
+                justCompletedCategoryId={justCompletedCategoryId}
+              />
+            ))}
+          </>
+        )}
+
+        {/* 🏆 Weekly Quests */}
+        {weeklyCategories.length > 0 && (
+          <>
+            <div className="flex items-center gap-3 mt-2">
+              <div
+                className="flex items-center gap-2 px-4 py-2 rounded-2xl font-black text-white"
+                style={{ background: "oklch(0.52 0.18 85)", fontFamily: "'Fredoka One', sans-serif", fontSize: "1.1rem", boxShadow: "0 3px 0 oklch(0.40 0.18 75)" }}
+              >
+                🏆 Weekly Quests
+              </div>
+              <span className="text-sm font-bold text-gray-400" style={{ fontFamily: "'Nunito', sans-serif" }}>
+                {weeklyDone}/{weeklyTasks.length}
+              </span>
+              {weeklyAllComplete && (
+                <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-xl">✅</motion.span>
+              )}
+            </div>
+            {weeklyCategories.map(category => (
+              <CategorySection
+                key={category.id}
+                category={category}
+                theme={theme}
+                onToggleTask={handleToggleTask}
+                justCompletedCategoryId={justCompletedCategoryId}
+              />
+            ))}
+          </>
+        )}
 
         {childData.categories.length === 0 && (
           <div className="text-center py-12">

@@ -55,15 +55,18 @@ export default function Home() {
   const [, navigate] = useLocation();
   const { deanData, emmaData, isLoading } = useAppContext();
 
-  const deanProgress = deanData.categories.length > 0
-    ? Math.round((deanData.categories.flatMap(c => c.tasks).filter(t => t.completed).length /
-        Math.max(deanData.categories.flatMap(c => c.tasks).length, 1)) * 100)
-    : 0;
-
-  const emmaProgress = emmaData.categories.length > 0
-    ? Math.round((emmaData.categories.flatMap(c => c.tasks).filter(t => t.completed).length /
-        Math.max(emmaData.categories.flatMap(c => c.tasks).length, 1)) * 100)
-    : 0;
+  // Calculate daily and weekly progress separately
+  const calcProgress = (data: typeof deanData) => {
+    const dailyTasks = data.categories.filter(c => (c.frequency || "daily") === "daily").flatMap(c => c.tasks);
+    const weeklyTasks = data.categories.filter(c => c.frequency === "weekly").flatMap(c => c.tasks);
+    const dailyPct = dailyTasks.length > 0 ? Math.round((dailyTasks.filter(t => t.completed).length / dailyTasks.length) * 100) : 0;
+    const weeklyPct = weeklyTasks.length > 0 ? Math.round((weeklyTasks.filter(t => t.completed).length / weeklyTasks.length) * 100) : 0;
+    const allTasks = [...dailyTasks, ...weeklyTasks];
+    const overall = allTasks.length > 0 ? Math.round((allTasks.filter(t => t.completed).length / allTasks.length) * 100) : 0;
+    return { dailyPct, weeklyPct, overall, hasDailyTasks: dailyTasks.length > 0, hasWeeklyTasks: weeklyTasks.length > 0 };
+  };
+  const deanProgress = calcProgress(deanData);
+  const emmaProgress = calcProgress(emmaData);
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "linear-gradient(160deg, oklch(0.97 0.02 80) 0%, oklch(0.94 0.03 60) 100%)" }}>
@@ -134,15 +137,30 @@ export default function Home() {
                   </span>
                 </div>
               </div>
-              {/* Progress bar */}
-              <div className="progress-track theme-dean">
-                <div
-                  className="progress-fill"
-                  style={{ width: `${deanProgress}%`, background: "linear-gradient(90deg, oklch(0.48 0.22 25), oklch(0.72 0.18 75))" }}
-                />
-              </div>
-              <p className="text-sm font-bold mt-2" style={{ color: "oklch(0.55 0.12 25)", fontFamily: "'Nunito', sans-serif" }}>
-                {deanProgress}% of quests complete!
+              {/* Progress bars */}
+              {deanProgress.hasDailyTasks && (
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-black" style={{ color: "oklch(0.45 0.18 220)", fontFamily: "'Fredoka One', sans-serif", minWidth: "3.5rem" }}>⚡ Today</span>
+                  <div className="flex-1 progress-track" style={{ height: "0.6rem" }}>
+                    <div className="progress-fill" style={{ width: `${deanProgress.dailyPct}%`, background: "oklch(0.45 0.18 220)" }} />
+                  </div>
+                  <span className="text-xs font-bold" style={{ color: "oklch(0.45 0.18 220)", fontFamily: "'Nunito', sans-serif" }}>{deanProgress.dailyPct}%</span>
+                </div>
+              )}
+              {deanProgress.hasWeeklyTasks && (
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-black" style={{ color: "oklch(0.52 0.18 85)", fontFamily: "'Fredoka One', sans-serif", minWidth: "3.5rem" }}>🏆 Week</span>
+                  <div className="flex-1 progress-track" style={{ height: "0.6rem" }}>
+                    <div className="progress-fill" style={{ width: `${deanProgress.weeklyPct}%`, background: "oklch(0.52 0.18 85)" }} />
+                  </div>
+                  <span className="text-xs font-bold" style={{ color: "oklch(0.52 0.18 85)", fontFamily: "'Nunito', sans-serif" }}>{deanProgress.weeklyPct}%</span>
+                </div>
+              )}
+              {!deanProgress.hasDailyTasks && !deanProgress.hasWeeklyTasks && (
+                <div className="progress-track theme-dean"><div className="progress-fill" style={{ width: "0%", background: "linear-gradient(90deg, oklch(0.48 0.22 25), oklch(0.72 0.18 75))" }} /></div>
+              )}
+              <p className="text-sm font-bold mt-1" style={{ color: "oklch(0.55 0.12 25)", fontFamily: "'Nunito', sans-serif" }}>
+                {deanProgress.overall}% of quests complete!
               </p>
               {/* Star history mini-chart */}
               <div className="mt-3">
@@ -195,15 +213,30 @@ export default function Home() {
                   </span>
                 </div>
               </div>
-              {/* Progress bar */}
-              <div className="progress-track theme-emma">
-                <div
-                  className="progress-fill"
-                  style={{ width: `${emmaProgress}%`, background: "linear-gradient(90deg, oklch(0.58 0.24 0), oklch(0.82 0.18 85))" }}
-                />
-              </div>
-              <p className="text-sm font-bold mt-2" style={{ color: "oklch(0.52 0.14 0)", fontFamily: "'Nunito', sans-serif" }}>
-                {emmaProgress}% of quests complete!
+              {/* Progress bars */}
+              {emmaProgress.hasDailyTasks && (
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-black" style={{ color: "oklch(0.45 0.18 220)", fontFamily: "'Fredoka One', sans-serif", minWidth: "3.5rem" }}>⚡ Today</span>
+                  <div className="flex-1 progress-track" style={{ height: "0.6rem" }}>
+                    <div className="progress-fill" style={{ width: `${emmaProgress.dailyPct}%`, background: "oklch(0.45 0.18 220)" }} />
+                  </div>
+                  <span className="text-xs font-bold" style={{ color: "oklch(0.45 0.18 220)", fontFamily: "'Nunito', sans-serif" }}>{emmaProgress.dailyPct}%</span>
+                </div>
+              )}
+              {emmaProgress.hasWeeklyTasks && (
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-black" style={{ color: "oklch(0.52 0.18 85)", fontFamily: "'Fredoka One', sans-serif", minWidth: "3.5rem" }}>🏆 Week</span>
+                  <div className="flex-1 progress-track" style={{ height: "0.6rem" }}>
+                    <div className="progress-fill" style={{ width: `${emmaProgress.weeklyPct}%`, background: "oklch(0.52 0.18 85)" }} />
+                  </div>
+                  <span className="text-xs font-bold" style={{ color: "oklch(0.52 0.18 85)", fontFamily: "'Nunito', sans-serif" }}>{emmaProgress.weeklyPct}%</span>
+                </div>
+              )}
+              {!emmaProgress.hasDailyTasks && !emmaProgress.hasWeeklyTasks && (
+                <div className="progress-track theme-emma"><div className="progress-fill" style={{ width: "0%", background: "linear-gradient(90deg, oklch(0.58 0.24 0), oklch(0.82 0.18 85))" }} /></div>
+              )}
+              <p className="text-sm font-bold mt-1" style={{ color: "oklch(0.52 0.14 0)", fontFamily: "'Nunito', sans-serif" }}>
+                {emmaProgress.overall}% of quests complete!
               </p>
               {/* Star history mini-chart */}
               <div className="mt-3">
